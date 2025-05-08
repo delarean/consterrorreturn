@@ -104,7 +104,7 @@ if err != nil {
 }
 
 if errors.Is(err, sql.ErrNoRows) {
-    return nil, ErrNotFound // mapping allowed
+    return nil, ErrNotFound // mapping allowed when errors.Is or error.As is used
 }
 ```
 
