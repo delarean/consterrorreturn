@@ -11,9 +11,11 @@ import (
 
 var Analyzer = &analysis.Analyzer{
 	Name: "consterrorreturn",
-	Doc:  "reports returning constant errors or wrapping them with %w instead of err variable",
+	Doc:  "returning sentinel (constant) error instead of propagating original err variable",
 	Run:  run,
 }
+
+const sentinelErrMsg = "returning sentinel (constant) error instead of propagating original err variable"
 
 func run(pass *analysis.Pass) (interface{}, error) {
 	for _, file := range pass.Files {
@@ -34,11 +36,11 @@ func run(pass *analysis.Pass) (interface{}, error) {
 					if isErrorType(typ, pass) {
 						switch expr := retExpr.(type) {
 						case *ast.SelectorExpr:
-							pass.Reportf(expr.Pos(), "returning package-level constant error instead of original err variable")
+							pass.Reportf(expr.Pos(), sentinelErrMsg)
 						case *ast.Ident:
 							obj := pass.TypesInfo.ObjectOf(expr)
 							if obj != nil && isConstant(obj) {
-								pass.Reportf(expr.Pos(), "returning constant error instead of original err variable")
+								pass.Reportf(expr.Pos(), sentinelErrMsg)
 							}
 						}
 					}
@@ -55,11 +57,11 @@ func run(pass *analysis.Pass) (interface{}, error) {
 								wrappedArg := call.Args[1]
 								switch expr := wrappedArg.(type) {
 								case *ast.SelectorExpr:
-									pass.Reportf(expr.Pos(), "wrapping constant error with %%w instead of original err variable")
+									pass.Reportf(expr.Pos(), sentinelErrMsg)
 								case *ast.Ident:
 									obj := pass.TypesInfo.ObjectOf(expr)
 									if obj != nil && isConstant(obj) {
-										pass.Reportf(expr.Pos(), "wrapping constant error with %%w instead of original err variable")
+										pass.Reportf(expr.Pos(), sentinelErrMsg)
 									}
 								}
 							}
@@ -82,19 +84,48 @@ func isErrorType(t types.Type, pass *analysis.Pass) bool {
 
 // Helper: check if node is inside `if errors.Is(...)`
 func insideIfErrorsIs(pass *analysis.Pass, node ast.Node) bool {
-	for parent := node; parent != nil; parent = pass.ParentOf(parent) {
-		if ifStmt, ok := parent.(*ast.IfStmt); ok {
-			if call, ok := ifStmt.Cond.(*ast.CallExpr); ok {
-				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if pkgIdent, ok := sel.X.(*ast.Ident); ok && pkgIdent.Name == "errors" &&
-						(sel.Sel.Name == "Is" || sel.Sel.Name == "As") {
-						return true
+	var insideErrorsIs bool
+
+	// For each file in the package
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			if ifStmt, ok := n.(*ast.IfStmt); ok {
+				// Check if it's an errors.Is/As call
+				if call, ok := ifStmt.Cond.(*ast.CallExpr); ok {
+					if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+						if pkgIdent, ok := sel.X.(*ast.Ident); ok && pkgIdent.Name == "errors" &&
+							(sel.Sel.Name == "Is" || sel.Sel.Name == "As") {
+
+							// Check if our node is in this if statement's body or else clause
+							if containsNode(ifStmt.Body, node) {
+								insideErrorsIs = true
+								return false // Stop traversing
+							}
+							if ifStmt.Else != nil && containsNode(ifStmt.Else, node) {
+								insideErrorsIs = true
+								return false // Stop traversing
+							}
+						}
 					}
 				}
 			}
-		}
+			return true
+		})
 	}
-	return false
+	return insideErrorsIs
+}
+
+// Helper: check if a parent node contains a child node
+func containsNode(parent, child ast.Node) bool {
+	found := false
+	ast.Inspect(parent, func(n ast.Node) bool {
+		if n == child {
+			found = true
+			return false
+		}
+		return !found
+	})
+	return found
 }
 
 // Helper: check if object is a constant
