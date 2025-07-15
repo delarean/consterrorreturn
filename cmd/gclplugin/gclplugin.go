@@ -1,4 +1,3 @@
-//go:build plugin
 package gclplugin
 
 import (
