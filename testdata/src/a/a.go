@@ -30,3 +30,27 @@ func f3() error {
 	}
 	return nil
 } 
+
+func f4() error {
+	err := errors.New("original error")
+	if err != nil {
+		return err
+	}
+	return nil
+} 
+
+func f5() error {
+	err := fmt.Errorf("original error: %w", ErrNotFound)
+	if errors.Is(err, ErrNotFound) {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func f6() error {
+	err := fmt.Errorf("original error: %w", ErrNotFound)
+	if errors.Is(err, ErrNotFound) {
+		return errors.New("new not found error")
+	}
+	return nil
+}
