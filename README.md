@@ -1,6 +1,6 @@
 # consterrorreturn go linter
 
-[![GoDoc](https://pkg.go.dev/badge/github.com/delarian/consterrorreturn.svg)](https://pkg.go.dev/github.com/delarian/consterrorreturn)
+[![GoDoc](https://pkg.go.dev/badge/delarian/consterrorreturn.svg)](https://pkg.go.dev/delarian/consterrorreturn)
 [![Build Status](https://github.com/delarian/consterrorreturn/actions/workflows/ci.yml/badge.svg)](https://github.com/delarian/consterrorreturn/actions/workflows/ci.yml)
 [![Coverage Status](https://codecov.io/gh/delarian/consterrorreturn/branch/main/graph/badge.svg)](https://codecov.io/gh/delarian/consterrorreturn)
 
