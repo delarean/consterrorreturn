@@ -37,7 +37,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 				}
 
 				for _, retExpr := range retStmt.Results {
-					if !isErrorType(pass.TypesInfo.TypeOf(retExpr)) {
+					if !IsErrorType(pass.TypesInfo.TypeOf(retExpr)) {
 						continue
 					}
 
@@ -104,7 +104,7 @@ func isAllowedErrorReturn(retExpr ast.Expr, errIdent *ast.Ident, pass *analysis.
 	return false
 }
 
-func isErrorType(t types.Type) bool {
+func IsErrorType(t types.Type) bool {
 	if t == nil {
 		return false
 	}
