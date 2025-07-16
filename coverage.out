@@ -40,3 +40,7 @@ github.com/delarean/consterrorreturn/consterrorreturn.go:104.2,104.14 1 1
 github.com/delarean/consterrorreturn/consterrorreturn.go:107.37,108.14 1 1
 github.com/delarean/consterrorreturn/consterrorreturn.go:108.14,110.3 1 1
 github.com/delarean/consterrorreturn/consterrorreturn.go:111.2,112.39 2 1
+github.com/delarean/consterrorreturn/cmd/gclplugin/gclplugin.go:9.13,11.2 1 1
+github.com/delarean/consterrorreturn/cmd/gclplugin/gclplugin.go:13.55,15.2 1 1
+github.com/delarean/consterrorreturn/cmd/gclplugin/gclplugin.go:19.81,21.2 1 1
+github.com/delarean/consterrorreturn/cmd/gclplugin/gclplugin.go:23.55,23.92 1 1
