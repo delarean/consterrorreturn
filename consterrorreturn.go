@@ -2,6 +2,7 @@ package consterrorreturn
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 	"strings"
 
@@ -19,50 +20,33 @@ const sentinelErrMsg = "returning sentinel (constant) error instead of propagati
 func run(pass *analysis.Pass) (interface{}, error) {
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(n ast.Node) bool {
-			if retStmt, ok := n.(*ast.ReturnStmt); ok {
+			ifStmt, ok := n.(*ast.IfStmt)
+			if !ok {
+				return true
+			}
+
+			errIdent := extractErrIdent(ifStmt.Cond)
+			if errIdent == nil {
+				return true
+			}
+
+			ast.Inspect(ifStmt.Body, func(node ast.Node) bool {
+				retStmt, ok := node.(*ast.ReturnStmt)
+				if !ok {
+					return true
+				}
+
 				for _, retExpr := range retStmt.Results {
-					if insideIfErrorsIs(pass, retStmt) {
+					if !isErrorType(pass.TypesInfo.TypeOf(retExpr)) {
 						continue
 					}
 
-					typ := pass.TypesInfo.TypeOf(retExpr)
-					if typ == nil {
-						continue
-					}
-					if isErrorType(typ, pass) {
-						switch expr := retExpr.(type) {
-						case *ast.SelectorExpr:
-							pass.Reportf(expr.Pos(), sentinelErrMsg)
-						case *ast.Ident:
-							obj := pass.TypesInfo.ObjectOf(expr)
-							if obj != nil && isConstant(obj) {
-								pass.Reportf(expr.Pos(), sentinelErrMsg)
-							}
-						}
+					if !isAllowedErrorReturn(retExpr, errIdent, pass) {
+						pass.Reportf(retExpr.Pos(), sentinelErrMsg)
 					}
 				}
-			}
-
-			if call, ok := n.(*ast.CallExpr); ok {
-				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-					if pkgIdent, ok := sel.X.(*ast.Ident); ok && pkgIdent.Name == "fmt" && sel.Sel.Name == "Errorf" {
-						if len(call.Args) >= 2 {
-							if formatLit, ok := call.Args[0].(*ast.BasicLit); ok && strings.Contains(formatLit.Value, "%w") {
-								wrappedArg := call.Args[1]
-								switch expr := wrappedArg.(type) {
-								case *ast.SelectorExpr:
-									pass.Reportf(expr.Pos(), sentinelErrMsg)
-								case *ast.Ident:
-									obj := pass.TypesInfo.ObjectOf(expr)
-									if obj != nil && isConstant(obj) {
-										pass.Reportf(expr.Pos(), sentinelErrMsg)
-									}
-								}
-							}
-						}
-					}
-				}
-			}
+				return true
+			})
 
 			return true
 		})
@@ -70,53 +54,60 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
-func isErrorType(t types.Type, pass *analysis.Pass) bool {
-	errorType := types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
-	return types.Implements(t, errorType)
+func extractErrIdent(cond ast.Expr) *ast.Ident {
+	binExpr, ok := cond.(*ast.BinaryExpr)
+	if !ok || binExpr.Op != token.NEQ {
+		return nil
+	}
+
+	x, y := binExpr.X, binExpr.Y
+
+	isNil := func(e ast.Expr) bool {
+		ident, ok := e.(*ast.Ident)
+		return ok && ident.Name == "nil"
+	}
+
+	if xIdent, ok := x.(*ast.Ident); ok && !isNil(x) && isNil(y) {
+		return xIdent
+	}
+
+	if yIdent, ok := y.(*ast.Ident); ok && !isNil(y) && isNil(x) {
+		return yIdent
+	}
+
+	return nil
 }
 
-func insideIfErrorsIs(pass *analysis.Pass, node ast.Node) bool {
-	var insideErrorsIs bool
+func isAllowedErrorReturn(retExpr ast.Expr, errIdent *ast.Ident, pass *analysis.Pass) bool {
+	switch expr := retExpr.(type) {
+	case *ast.Ident:
+		return expr.Name == errIdent.Name
+	case *ast.CallExpr:
+		if sel, ok := expr.Fun.(*ast.SelectorExpr); ok {
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "fmt" && sel.Sel.Name == "Errorf" {
+				if len(expr.Args) < 2 {
+					return false
+				}
+				formatStr, ok := expr.Args[0].(*ast.BasicLit)
+				if !ok || !strings.Contains(formatStr.Value, "%w") {
+					return false
+				}
 
-	for _, file := range pass.Files {
-		ast.Inspect(file, func(n ast.Node) bool {
-			if ifStmt, ok := n.(*ast.IfStmt); ok {
-				if call, ok := ifStmt.Cond.(*ast.CallExpr); ok {
-					if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-						if pkgIdent, ok := sel.X.(*ast.Ident); ok && pkgIdent.Name == "errors" &&
-							(sel.Sel.Name == "Is" || sel.Sel.Name == "As") {
-
-							if containsNode(ifStmt.Body, node) {
-								insideErrorsIs = true
-								return false
-							}
-							if ifStmt.Else != nil && containsNode(ifStmt.Else, node) {
-								insideErrorsIs = true
-								return false
-							}
-						}
+				for _, arg := range expr.Args[1:] {
+					if argIdent, ok := arg.(*ast.Ident); ok && argIdent.Name == errIdent.Name {
+						return true
 					}
 				}
 			}
-			return true
-		})
-	}
-	return insideErrorsIs
-}
-
-func containsNode(parent, child ast.Node) bool {
-	found := false
-	ast.Inspect(parent, func(n ast.Node) bool {
-		if n == child {
-			found = true
-			return false
 		}
-		return !found
-	})
-	return found
+	}
+	return false
 }
 
-func isConstant(obj types.Object) bool {
-	_, isConst := obj.(*types.Const)
-	return isConst
+func isErrorType(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	errorType := types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+	return types.Implements(t, errorType)
 }
