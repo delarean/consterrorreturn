@@ -1,5 +1,9 @@
 # consterrorreturn go linter
 
+[![GoDoc](https://pkg.go.dev/badge/github.com/delarian/consterrorreturn.svg)](https://pkg.go.dev/github.com/delarian/consterrorreturn)
+[![Build Status](https://github.com/delarian/consterrorreturn/actions/workflows/ci.yml/badge.svg)](https://github.com/delarian/consterrorreturn/actions/workflows/ci.yml)
+[![Coverage Status](https://codecov.io/gh/delarian/consterrorreturn/branch/main/graph/badge.svg)](https://codecov.io/gh/delarian/consterrorreturn)
+
 ✅ **A custom Go analyzer to detect returning constant (sentinel) errors instead of propagating the original `err` variable.**
 
 This linter enforces better error handling practices in Go by ensuring that you don't lose the original error context.
